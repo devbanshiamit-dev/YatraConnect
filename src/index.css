@@ -76,6 +76,13 @@ textarea {
   color: #77786f;
 }
 
+.nav-content {
+  display: flex;
+  align-items: center;
+  gap: 68px;
+  margin-left: auto;
+}
+
 .nav-links {
   display: flex;
   gap: 35px;
@@ -101,8 +108,16 @@ textarea {
 
 .menu-button {
   display: none;
-  background: none;
-  border: 0;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid #deddd7;
+  border-radius: 4px;
+  color: #25251f;
+  cursor: pointer;
 }
 
 .hero {
@@ -742,13 +757,50 @@ textarea {
     font-size: 17px;
   }
 
-  .nav-links,
+  .navbar {
+    position: relative;
+  }
+
+  .nav-content {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    display: grid;
+    gap: 18px;
+    margin: 0;
+    padding: 8px 18px 18px;
+    background: #f7f6f2;
+    border: 1px solid #e7e5de;
+    box-shadow: 0 12px 28px #25251f14;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+  }
+
+  .nav-content.is-open {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+
+  .nav-links {
+    display: grid;
+    gap: 0;
+  }
+
+  .nav-links a {
+    padding: 13px 0;
+    border-bottom: 1px solid #e7e5de;
+  }
+
   .nav-cta {
-    display: none;
+    justify-content: center;
   }
 
   .menu-button {
-    display: block;
+    display: inline-flex;
   }
 
   .hero {
