@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { ArrowUpRight, Clock3, MapPin } from "lucide-react";
 import SectionTitle from "./SectionTitle";
 import sunriseBoat from "../images/sunrice.jpg";
@@ -12,21 +13,24 @@ const experiences =
             type: "BOAT EXPERIENCE",
             time: "1–2 hours",
             place: "Dashashwamedh Ghat",
-            image: sunriseBoat
+            image: sunriseBoat,
+            to: "/boats?ride=sunrise"
         },
         {
             name: "Evening Ganga Aarti",
             type: "CULTURAL EXPERIENCE",
             time: "2 hours",
             place: "Assi Ghat",
-            image: aarti
+            image: aarti,
+            to: "/boats?ride=sunset"
         },
         {
             name: "Old city walk",
             type: "LOCAL EXPERIENCE",
             time: "2–3 hours",
             place: "Varanasi Old City",
-            image: street
+            image: street,
+            to: "/#enquiry"
         }
     ];
 export default function Experiences() {
@@ -45,9 +49,9 @@ export default function Experiences() {
                             <span className="experience-tag">
                                 {x.type}
                             </span>
-                            <a href="#enquiry" className="round-arrow" aria-label={"Enquire about " + x.name}>
+                            <Link to={x.to} className="round-arrow" aria-label={"Enquire about " + x.name}>
                                 <ArrowUpRight />
-                            </a>
+                            </Link>
                         </div>
                         <div className="experience-info">
                             <h3>{x.name}</h3>

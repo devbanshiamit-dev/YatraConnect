@@ -1,10 +1,14 @@
+import { Link } from "react-router-dom";
 import { ArrowUpRight } from "lucide-react";
+
 export default function Footer() {
+    const backToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
+
     return (
         <footer className="footer">
             <div className="container">
                 <div className="footer-main">
-                    <a className="brand footer-brand" href="#">
+                    <Link className="brand footer-brand" to="/">
                         <span className="brand-mark">Y</span>
                         <span>
                             Yatra
@@ -12,20 +16,20 @@ export default function Footer() {
                                 Connect
                             </span>
                         </span>
-                    </a>
+                    </Link>
                     <p>Closer to the places.<br />Closer to the feeling.</p>
-                    <a className="footer-top" href="#">
+                    <button type="button" className="footer-top" onClick={backToTop}>
                         Back to top ↑
-                    </a>
+                    </button>
                 </div>
                 <div className="footer-bottom">
                     <span>© 2026 YatraConnect</span>
                     <span>Made for journeys in Varanasi, India</span>
                     <span>
-                        <a href="#services">
+                        <Link to="/#services">
                             Explore
                             <ArrowUpRight size={13} />
-                        </a>
+                        </Link>
                     </span>
                 </div>
             </div>

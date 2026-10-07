@@ -1,5 +1,6 @@
-import { ArrowRight, MapPin, CalendarDays, Users } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import heroImage from '../images/heroimage.jpg';
+import QuickSearch from "./QuickSearch";
 
 export default function Hero() {
   return (
@@ -10,8 +11,7 @@ export default function Hero() {
           YOUR JOURNEY, OUR CONNECTION
         </div>
         <h1>
-          Find your
-          <em>peace</em>
+          Find your <em>peace</em>
           <br />
           on the river.
         </h1>
@@ -28,6 +28,7 @@ export default function Hero() {
             <span>↗</span>
           </a>
         </div>
+        <QuickSearch />
         <div className="hero-note">
           <div className="avatar-stack">
             <i>✦</i>
