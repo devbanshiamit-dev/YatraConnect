@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { BedDouble, Check, Clock3, MapPin, ShieldCheck, Users } from "lucide-react";
 import { GST_RATE, rooms } from "../data/rooms";
@@ -12,11 +12,12 @@ import {
     nightsBetween,
     storeRecord,
     todayISO,
+    isValidPhone,
 } from "../lib/booking";
 import Stepper from "../components/Stepper";
 import BookingSuccess from "../components/BookingSuccess";
 
-const PHONE_RE = /^[+\d][\d\s-]{7,}$/;
+const BOOKING_WINDOW_DAYS = 90;
 
 export default function RoomsPage() {
     const [params] = useSearchParams();
@@ -27,7 +28,9 @@ export default function RoomsPage() {
     const paramGuests = Number(params.get("guests"));
 
     const initialCheckIn =
-        isValidISODate(paramDate) && paramDate >= today ? paramDate : addDaysISO(today, 1);
+        isValidISODate(paramDate) && paramDate >= today && paramDate <= addDaysISO(today, BOOKING_WINDOW_DAYS - 1)
+            ? paramDate
+            : addDaysISO(today, 1);
 
     const [roomId, setRoomId] = useState(initialRoom.id);
     const [checkIn, setCheckIn] = useState(initialCheckIn);
@@ -41,18 +44,21 @@ export default function RoomsPage() {
     const [notes, setNotes] = useState("");
     const [errors, setErrors] = useState({});
     const [confirmed, setConfirmed] = useState(null);
+    const submitLock = useRef(false);
 
     const room = rooms.find((r) => r.id === roomId);
 
     const datesValid = isValidISODate(checkIn) && isValidISODate(checkOut);
     const nights = datesValid ? Math.max(0, nightsBetween(checkIn, checkOut)) : 0;
+    const guestCapacity = room.maxGuests * roomCount;
     const subtotal = room.price * nights * roomCount;
     const gst = Math.round(subtotal * GST_RATE);
     const total = subtotal + gst;
 
     const selectRoom = (next) => {
         setRoomId(next.id);
-        setGuests((g) => clamp(g, 1, next.maxGuests));
+        setGuests((g) => clamp(g, 1, next.maxGuests * roomCount));
+        setErrors((current) => ({ ...current, guests: undefined, storage: undefined }));
     };
 
     const updateCheckIn = (value) => {
@@ -61,22 +67,39 @@ export default function RoomsPage() {
             : 2;
         setCheckIn(value);
         if (!isValidISODate(checkOut) || (isValidISODate(value) && checkOut <= value)) {
-            setCheckOut(addDaysISO(value, Math.max(1, stay)));
+            const latestCheckOut = addDaysISO(today, BOOKING_WINDOW_DAYS);
+            const desiredCheckOut = isValidISODate(value) ? addDaysISO(value, Math.max(1, stay)) : "";
+            setCheckOut(isValidISODate(value) && desiredCheckOut > latestCheckOut ? latestCheckOut : desiredCheckOut);
         }
+        setErrors((current) => ({ ...current, checkIn: undefined, checkOut: undefined, storage: undefined }));
+    };
+
+    const updateRoomCount = (value) => {
+        setRoomCount(value);
+        setGuests((current) => clamp(current, 1, room.maxGuests * value));
+        setErrors((current) => ({ ...current, guests: undefined, rooms: undefined, storage: undefined }));
+    };
+
+    const updateGuests = (value) => {
+        setGuests(value);
+        setErrors((current) => ({ ...current, guests: undefined, storage: undefined }));
     };
 
     const submit = (e) => {
         e.preventDefault();
         const next = {};
-        if (!isValidISODate(checkIn) || checkIn < today) next.date = "Pick a check-in date from today onwards.";
-        if (!isValidISODate(checkOut) || nights < 1) next.date = "Check-out must be at least one night after check-in.";
-        if (!name.trim()) next.name = "Please tell us your name.";
-        if (!PHONE_RE.test(phone.trim())) next.phone = "Add a phone number we can reach you on.";
+        if (!isValidISODate(checkIn) || checkIn < today || checkIn > addDaysISO(today, BOOKING_WINDOW_DAYS)) next.checkIn = "Choose a valid check-in within the next 90 days.";
+        if (!isValidISODate(checkOut) || !isValidISODate(checkIn) || checkOut <= checkIn || checkOut > addDaysISO(today, BOOKING_WINDOW_DAYS)) next.checkOut = "Choose a check-out after check-in and within the 90-day booking window.";
+        if (!Number.isInteger(roomCount) || roomCount < 1 || roomCount > 3) next.rooms = "Choose between 1 and 3 rooms.";
+        if (!Number.isInteger(guests) || guests < 1 || guests > guestCapacity) next.guests = `Choose 1 to ${guestCapacity} guests for ${roomCount} room${roomCount === 1 ? "" : "s"}.`;
+        if (!name.trim() || name.trim().length > 100) next.name = "Enter your name (up to 100 characters).";
+        if (!isValidPhone(phone)) next.phone = "Enter a valid phone number with 7 to 15 digits.";
         setErrors(next);
         if (Object.keys(next).length) return;
+        if (submitLock.current) return;
+        submitLock.current = true;
 
-        setConfirmed(
-            storeRecord({
+        const result = storeRecord({
                 kind: "room",
                 reference: makeReference("R"),
                 room: room.name,
@@ -90,8 +113,12 @@ export default function RoomsPage() {
                 phone: phone.trim(),
                 notes: notes.trim(),
                 createdAt: new Date().toISOString(),
-            })
-        );
+            });
+        if (result.success) setConfirmed(result.record);
+        else {
+            submitLock.current = false;
+            setErrors({ storage: "We couldn't save this request on this device. Check browser storage and try again." });
+        }
     };
 
     if (confirmed) {
@@ -100,8 +127,8 @@ export default function RoomsPage() {
                 <section className="booking-section container">
                     <BookingSuccess
                         reference={confirmed.reference}
-                        title="Your stay is booked."
-                        note="We'll hold your room and call to confirm check-in details."
+                        title="Your stay request is saved."
+                        note="This request is saved locally. Room availability and supplier confirmation are not connected yet."
                         lines={[
                             ["Room", confirmed.room],
                             ["Check-in", formatDate(confirmed.checkIn)],
@@ -112,7 +139,7 @@ export default function RoomsPage() {
                         ]}
                         total={formatINR(confirmed.total)}
                         resetLabel="Book another stay"
-                        onReset={() => setConfirmed(null)}
+                        onReset={() => { submitLock.current = false; setConfirmed(null); }}
                     />
                 </section>
             </main>
@@ -131,13 +158,12 @@ export default function RoomsPage() {
                         <em>Stay a while.</em>
                     </h1>
                     <p>
-                        Handpicked stays near the ghats — breakfast included, booked in a minute,
-                        paid at check-in.
+                        Explore stays near the ghats with breakfast included. Requests are saved locally; availability is not connected yet.
                     </p>
                     <div className="page-hero-meta">
-                        <span><ShieldCheck size={15} />Pay at check-in</span>
+                        <span><ShieldCheck size={15} />Prototype request only</span>
                         <span><BedDouble size={15} />Breakfast included</span>
-                        <span><Clock3 size={15} />Free cancellation up to 48h</span>
+                        <span><Clock3 size={15} />Availability needs confirmation</span>
                     </div>
                 </div>
             </section>
@@ -193,11 +219,11 @@ export default function RoomsPage() {
                                     id="room-checkin"
                                     type="date"
                                     min={today}
-                                    max={addDaysISO(today, 90)}
+                                    max={addDaysISO(today, BOOKING_WINDOW_DAYS - 1)}
                                     value={checkIn}
                                     onChange={(e) => updateCheckIn(e.target.value)}
-                                    className={errors.date ? "invalid" : ""}
-                                    aria-invalid={Boolean(errors.date)}
+                                    className={errors.checkIn ? "invalid" : ""}
+                                    aria-invalid={Boolean(errors.checkIn)}
                                 />
                             </div>
                             <div className="form-field">
@@ -206,16 +232,16 @@ export default function RoomsPage() {
                                     id="room-checkout"
                                     type="date"
                                     min={addDaysISO(checkIn, 1)}
-                                    max={addDaysISO(checkIn, 90)}
+                                    max={addDaysISO(today, BOOKING_WINDOW_DAYS)}
                                     value={checkOut}
-                                    onChange={(e) => setCheckOut(e.target.value)}
-                                    className={errors.date ? "invalid" : ""}
-                                    aria-invalid={Boolean(errors.date)}
+                                    onChange={(e) => { setCheckOut(e.target.value); setErrors((v) => ({ ...v, checkOut: undefined, storage: undefined })); }}
+                                    className={errors.checkOut ? "invalid" : ""}
+                                    aria-invalid={Boolean(errors.checkOut)}
                                 />
                             </div>
                         </div>
-                        {errors.date ? (
-                            <span className="field-error">{errors.date}</span>
+                        {errors.checkIn || errors.checkOut ? (
+                            <span className="field-error" role="alert">{errors.checkIn || errors.checkOut}</span>
                         ) : (
                             nights > 0 && (
                                 <span className="nights-hint">
@@ -228,32 +254,34 @@ export default function RoomsPage() {
                             <span className="step-num">03</span>
                             <div>
                                 <h2>Guests & contact</h2>
-                                <p>We'll call to confirm your arrival time.</p>
+                                <p>Room requests are not sent to a supplier.</p>
                             </div>
                         </div>
                         <div className="stepper-row">
                             <Stepper
                                 label="Guests"
                                 value={guests}
-                                onChange={setGuests}
-                                max={room.maxGuests}
-                                hint={`This room fits up to ${room.maxGuests}`}
+                                onChange={updateGuests}
+                                max={guestCapacity}
+                                hint={`${room.maxGuests} guests per room; ${guestCapacity} across ${roomCount} room${roomCount === 1 ? "" : "s"}`}
                             />
                             <Stepper
                                 label="Rooms"
                                 value={roomCount}
-                                onChange={setRoomCount}
+                                onChange={updateRoomCount}
                                 max={3}
                                 hint="Book up to 3 rooms at once"
                             />
                         </div>
+                        {errors.guests && <span className="field-error" role="alert">{errors.guests}</span>}
+                        {errors.rooms && <span className="field-error" role="alert">{errors.rooms}</span>}
                         <div className="field-row">
                             <div className="form-field">
                                 <label htmlFor="room-name">Your name</label>
                                 <input
                                     id="room-name"
                                     value={name}
-                                    onChange={(e) => setName(e.target.value)}
+                                    onChange={(e) => { setName(e.target.value); setErrors((v) => ({ ...v, name: undefined, storage: undefined })); }}
                                     placeholder="e.g. Amit Sharma"
                                     className={errors.name ? "invalid" : ""}
                                     aria-invalid={Boolean(errors.name)}
@@ -265,7 +293,9 @@ export default function RoomsPage() {
                                 <input
                                     id="room-phone"
                                     value={phone}
-                                    onChange={(e) => setPhone(e.target.value)}
+                                    type="tel"
+                                    autoComplete="tel"
+                                    onChange={(e) => { setPhone(e.target.value); setErrors((v) => ({ ...v, phone: undefined, storage: undefined })); }}
                                     placeholder="+91 98765 43210"
                                     className={errors.phone ? "invalid" : ""}
                                     aria-invalid={Boolean(errors.phone)}
@@ -305,20 +335,22 @@ export default function RoomsPage() {
                                 <b>{formatINR(subtotal)}</b>
                             </div>
                             <div className="summary-line">
-                                <span>GST (12%)</span>
+                                <span>Estimated GST (12%*)</span>
                                 <b>{formatINR(gst)}</b>
                             </div>
                         </div>
+                        <small className="form-footnote">*12% is a configurable prototype estimate; verify the applicable rate before production.</small>
                         <div className="summary-total">
                             <span>Total</span>
                             <b>{formatINR(total)}</b>
                         </div>
+                        {errors.storage && <p className="field-error" role="alert">{errors.storage}</p>}
                         <button className="button button-accent summary-confirm" type="submit">
-                            Confirm booking
+                            Save stay request
                         </button>
                         <div className="summary-note">
                             <Clock3 size={14} />
-                            <span>Free cancellation up to 48 hours before check-in.</span>
+                            <span>Saved locally on this device only.</span>
                         </div>
                         <ul className="summary-includes">
                             {room.perks.map((item) => (

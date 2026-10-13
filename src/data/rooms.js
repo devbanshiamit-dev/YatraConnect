@@ -2,6 +2,7 @@ import heritage from "../images/room-heritage.png";
 import suite from "../images/room-suite.png";
 import courtyard from "../images/room-courtyard.png";
 
+// Prototype estimate only; confirm the applicable tax rate before production use.
 export const GST_RATE = 0.12;
 
 export const rooms = [

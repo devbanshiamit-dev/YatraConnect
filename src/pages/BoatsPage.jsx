@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Check, Clock3, MapPin, ShieldCheck, Users } from "lucide-react";
 import { boats } from "../data/boats";
@@ -11,11 +11,12 @@ import {
     makeReference,
     storeRecord,
     todayISO,
+    isValidPhone,
 } from "../lib/booking";
 import Stepper from "../components/Stepper";
 import BookingSuccess from "../components/BookingSuccess";
 
-const PHONE_RE = /^[+\d][\d\s-]{7,}$/;
+const BOOKING_WINDOW_DAYS = 90;
 
 export default function BoatsPage() {
     const [params] = useSearchParams();
@@ -28,7 +29,7 @@ export default function BoatsPage() {
     const [boatId, setBoatId] = useState(initialBoat.id);
     const [slot, setSlot] = useState(initialBoat.slots[0]);
     const [date, setDate] = useState(
-        isValidISODate(paramDate) && paramDate >= today ? paramDate : today
+        isValidISODate(paramDate) && paramDate >= today && paramDate <= addDaysISO(today, BOOKING_WINDOW_DAYS) ? paramDate : today
     );
     const [guests, setGuests] = useState(
         clamp(Number.isFinite(paramGuests) && paramGuests > 0 ? paramGuests : 2, 1, initialBoat.maxGuests)
@@ -38,6 +39,7 @@ export default function BoatsPage() {
     const [notes, setNotes] = useState("");
     const [errors, setErrors] = useState({});
     const [confirmed, setConfirmed] = useState(null);
+    const submitLock = useRef(false);
 
     const boat = boats.find((b) => b.id === boatId);
 
@@ -50,19 +52,28 @@ export default function BoatsPage() {
         setBoatId(next.id);
         setSlot(next.slots[0]);
         setGuests((g) => clamp(g, 1, next.maxGuests));
+        setErrors((current) => ({ ...current, slot: undefined, guests: undefined, storage: undefined }));
+    };
+
+    const updateGuests = (value) => {
+        setGuests(value);
+        setErrors((current) => ({ ...current, guests: undefined, storage: undefined }));
     };
 
     const submit = (e) => {
         e.preventDefault();
         const next = {};
-        if (!isValidISODate(date) || date < today) next.date = "Pick a date from today onwards.";
-        if (!name.trim()) next.name = "Please tell us your name.";
-        if (!PHONE_RE.test(phone.trim())) next.phone = "Add a phone number we can reach you on.";
+        if (!isValidISODate(date) || date < today || date > addDaysISO(today, BOOKING_WINDOW_DAYS)) next.date = "Choose a valid date within the next 90 days.";
+        if (!boat.slots.includes(slot)) next.slot = "Choose a boarding time for this ride.";
+        if (!Number.isInteger(guests) || guests < 1 || guests > boat.maxGuests) next.guests = `Choose 1 to ${boat.maxGuests} guests for this ride.`;
+        if (!name.trim() || name.trim().length > 100) next.name = "Enter your name (up to 100 characters).";
+        if (!isValidPhone(phone)) next.phone = "Enter a valid phone number with 7 to 15 digits.";
         setErrors(next);
         if (Object.keys(next).length) return;
+        if (submitLock.current) return;
+        submitLock.current = true;
 
-        setConfirmed(
-            storeRecord({
+        const result = storeRecord({
                 kind: "boat",
                 reference: makeReference("B"),
                 ride: boat.name,
@@ -74,8 +85,12 @@ export default function BoatsPage() {
                 phone: phone.trim(),
                 notes: notes.trim(),
                 createdAt: new Date().toISOString(),
-            })
-        );
+            });
+        if (result.success) setConfirmed(result.record);
+        else {
+            submitLock.current = false;
+            setErrors({ storage: "We couldn't save this booking on this device. Check browser storage and try again." });
+        }
     };
 
     if (confirmed) {
@@ -84,8 +99,8 @@ export default function BoatsPage() {
                 <section className="booking-section container">
                     <BookingSuccess
                         reference={confirmed.reference}
-                        title="Your boat ride is booked."
-                        note={`See you at ${confirmed.slot} — we'll call to confirm the meeting point.`}
+                        title="Your boat ride request is saved."
+                        note="This request is saved locally. Availability and supplier confirmation are not connected yet."
                         lines={[
                             ["Ride", confirmed.ride],
                             ["Date", formatDate(confirmed.date)],
@@ -94,7 +109,7 @@ export default function BoatsPage() {
                         ]}
                         total={formatINR(confirmed.total)}
                         resetLabel="Book another ride"
-                        onReset={() => setConfirmed(null)}
+                        onReset={() => { submitLock.current = false; setConfirmed(null); }}
                     />
                 </section>
             </main>
@@ -113,13 +128,12 @@ export default function BoatsPage() {
                         <em>We'll take it from there.</em>
                     </h1>
                     <p>
-                        Choose a ride, a time and how many are coming. Your booking is confirmed
-                        instantly and paid at the ghat — no advance needed.
+                        Choose a ride, time and guest count. Requests are saved on this device; availability is not connected yet.
                     </p>
                     <div className="page-hero-meta">
-                        <span><ShieldCheck size={15} />No advance payment</span>
+                        <span><ShieldCheck size={15} />Prototype request only</span>
                         <span><Users size={15} />Private & shared boats</span>
-                        <span><MapPin size={15} />Dashashwamedh Ghat pickup</span>
+                        <span><MapPin size={15} />Availability needs confirmation</span>
                     </div>
                 </div>
             </section>
@@ -176,50 +190,52 @@ export default function BoatsPage() {
                                 min={today}
                                 max={addDaysISO(today, 90)}
                                 value={date}
-                                onChange={(e) => setDate(e.target.value)}
+                                onChange={(e) => { setDate(e.target.value); setErrors((v) => ({ ...v, date: undefined, storage: undefined })); }}
                                 className={errors.date ? "invalid" : ""}
                                 aria-invalid={Boolean(errors.date)}
                             />
                             {errors.date && <span className="field-error">{errors.date}</span>}
                         </div>
                         <div className="form-field">
-                            <span className="form-label">Boarding time</span>
-                            <div className="slot-grid">
+                                <span className="form-label" id="boarding-time-label">Boarding time</span>
+                            <div className="slot-grid" role="group" aria-labelledby="boarding-time-label">
                                 {boat.slots.map((s) => (
                                     <button
                                         type="button"
                                         key={s}
                                         className={"slot-chip" + (s === slot ? " active" : "")}
                                         aria-pressed={s === slot}
-                                        onClick={() => setSlot(s)}
+                                        onClick={() => { setSlot(s); setErrors((v) => ({ ...v, slot: undefined, storage: undefined })); }}
                                     >
                                         {s}
                                     </button>
                                 ))}
                             </div>
                         </div>
+                        {errors.slot && <span className="field-error" role="alert">{errors.slot}</span>}
 
                         <div className="booking-step">
                             <span className="step-num">03</span>
                             <div>
                                 <h2>Guests & contact</h2>
-                                <p>We'll call to confirm the meeting spot on the day.</p>
+                                <p>This prototype does not contact the boat operator.</p>
                             </div>
                         </div>
                         <Stepper
                             label="Guests"
                             value={guests}
-                            onChange={setGuests}
+                            onChange={updateGuests}
                             max={boat.maxGuests}
                             hint={`This ride fits up to ${boat.maxGuests}`}
                         />
+                        {errors.guests && <span className="field-error" role="alert">{errors.guests}</span>}
                         <div className="field-row">
                             <div className="form-field">
                                 <label htmlFor="boat-name">Your name</label>
                                 <input
                                     id="boat-name"
                                     value={name}
-                                    onChange={(e) => setName(e.target.value)}
+                                    onChange={(e) => { setName(e.target.value); setErrors((v) => ({ ...v, name: undefined, storage: undefined })); }}
                                     placeholder="e.g. Amit Sharma"
                                     className={errors.name ? "invalid" : ""}
                                     aria-invalid={Boolean(errors.name)}
@@ -231,7 +247,9 @@ export default function BoatsPage() {
                                 <input
                                     id="boat-phone"
                                     value={phone}
-                                    onChange={(e) => setPhone(e.target.value)}
+                                    type="tel"
+                                    autoComplete="tel"
+                                    onChange={(e) => { setPhone(e.target.value); setErrors((v) => ({ ...v, phone: undefined, storage: undefined })); }}
                                     placeholder="+91 98765 43210"
                                     className={errors.phone ? "invalid" : ""}
                                     aria-invalid={Boolean(errors.phone)}
@@ -272,11 +290,12 @@ export default function BoatsPage() {
                             <b>{formatINR(total)}</b>
                         </div>
                         <button className="button button-accent summary-confirm" type="submit">
-                            Confirm booking
+                            Save booking request
                         </button>
+                        {errors.storage && <p className="field-error" role="alert">{errors.storage}</p>}
                         <div className="summary-note">
                             <Clock3 size={14} />
-                            <span>Free cancellation up to 24 hours before.</span>
+                            <span>Saved locally on this device only.</span>
                         </div>
                         <ul className="summary-includes">
                             {boat.includes.map((item) => (

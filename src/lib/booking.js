@@ -23,7 +23,10 @@ export function addDaysISO(iso, days) {
 }
 
 export function isValidISODate(value) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value ?? "")) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 }
 
 export function formatDate(iso) {
@@ -51,11 +54,19 @@ export function makeReference(prefix) {
 
 export function storeRecord(record) {
   try {
-    const saved = JSON.parse(localStorage.getItem(RECORDS_KEY) ?? "[]");
+    const parsed = JSON.parse(localStorage.getItem(RECORDS_KEY) ?? "[]");
+    if (!Array.isArray(parsed)) throw new Error("Stored booking data is invalid.");
+    const saved = parsed;
     saved.push(record);
     localStorage.setItem(RECORDS_KEY, JSON.stringify(saved));
-  } catch {
-    // localStorage can be unavailable (private browsing); the confirmation still shows
+    return { success: true, record };
+  } catch (error) {
+    return { success: false, error };
   }
-  return record;
+}
+
+export function isValidPhone(value) {
+  const normalized = String(value ?? "").trim();
+  const digits = normalized.replace(/\D/g, "");
+  return /^[+\d][\d\s().-]*$/.test(normalized) && digits.length >= 7 && digits.length <= 15;
 }

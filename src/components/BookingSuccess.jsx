@@ -9,6 +9,7 @@ export default function BookingSuccess({ reference, title, note, lines, total, r
       </span>
       <h2>{title}</h2>
       <p className="success-sub">{note}</p>
+      <p className="success-sub">Saved on this device only. This prototype does not contact a supplier or confirm availability.</p>
       <span className="success-ref">{reference}</span>
       <div className="success-lines">
         {lines.map(([label, value]) => (

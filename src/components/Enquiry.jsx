@@ -1,14 +1,18 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ArrowRight, Check } from "lucide-react";
 import { makeReference, storeRecord } from "../lib/booking";
 
 export default function Enquiry() {
     const [sent, setSent] = useState(null);
+    const [storageError, setStorageError] = useState("");
+    const submitLock = useRef(false);
 
     const handleSubmit = (event) => {
         event.preventDefault();
+        if (submitLock.current) return;
         const data = new FormData(event.currentTarget);
-        const record = storeRecord({
+        submitLock.current = true;
+        const result = storeRecord({
             kind: "enquiry",
             reference: makeReference("E"),
             name: String(data.get("name") ?? "").trim(),
@@ -18,7 +22,11 @@ export default function Enquiry() {
             message: String(data.get("message") ?? "").trim(),
             createdAt: new Date().toISOString(),
         });
-        setSent(record);
+        if (result.success) setSent(result.record);
+        else {
+            submitLock.current = false;
+            setStorageError("We could not save this enquiry on this device. Your entries are still here; check browser storage and try again.");
+        }
     };
 
     return (
@@ -41,15 +49,16 @@ export default function Enquiry() {
                         <span className="success-icon">
                             <Check size={26} />
                         </span>
-                        <h3>Enquiry received.</h3>
-                        <p>Thanks{sent.name ? `, ${sent.name.split(" ")[0]}` : ""} — we’ll get back to you within a day.</p>
-                        <span className="success-ref">{sent.reference}</span>
-                        <button type="button" className="button button-dark" onClick={() => setSent(null)}>
+                        <h3>{sent.error ? "Enquiry not saved." : "Enquiry saved on this device."}</h3>
+                        <p>{sent.error || "This prototype does not send enquiries to a server or supplier."}</p>
+                        {!sent.error && <span className="success-ref">{sent.reference}</span>}
+                        <button type="button" className="button button-dark" onClick={() => { submitLock.current = false; setSent(null); }}>
                             Send another enquiry
                         </button>
                     </div>
                 ) : (
                     <form className="enquiry-form" onSubmit={handleSubmit}>
+                        {storageError && <p className="field-error" role="alert">{storageError}</p>}
                         <div className="form-heading">
                             <h3>Plan your journey</h3>
                             <span>01 — YOUR DETAILS</span>
@@ -57,11 +66,11 @@ export default function Enquiry() {
 
                         <label>
                             Your name
-                            <input type="text" name="name" required placeholder="e.g. Amit Sharma" />
+                            <input type="text" name="name" required maxLength="100" onChange={() => setStorageError("")} placeholder="e.g. Amit Sharma" />
                         </label>
                         <label>
                             Email or phone
-                            <input type="text" name="contact" required placeholder="How can we reach you?" />
+                            <input type="text" name="contact" required maxLength="160" onChange={() => setStorageError("")} placeholder="How can we reach you?" />
                         </label>
 
                         <div className="form-two">
@@ -89,7 +98,7 @@ export default function Enquiry() {
                             <ArrowRight size={18} />
                         </button>
                         <small className="form-footnote">
-                            No payment required. We’ll get back to you with the details.
+                            Saved locally on this device only; no message is sent to a server or supplier.
                         </small>
                     </form>
                 )}

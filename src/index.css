@@ -33,6 +33,11 @@ textarea {
   font: inherit;
 }
 
+:focus-visible {
+  outline: 3px solid #a85535;
+  outline-offset: 3px;
+}
+
 .container {
   width: min(1160px, calc(100% - 64px));
   margin-inline: auto;
@@ -958,6 +963,17 @@ textarea {
   .footer-bottom span:nth-child(2) {
     order: 3;
     width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
